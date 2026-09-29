@@ -1,25 +1,48 @@
-// src/store/useSession.js - Session & Auth Management
+// src/store/useSession.js
+// Session & Authentication Management
+
 import { create } from 'zustand';
 import { api } from 'lib/api';
 
 const TOKEN_KEY = 'pustaka_token';
 const USER_KEY = 'pustaka_user';
-const USERS_REGISTRY_KEY = 'pustaka_registered_users';
-const authChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('pustaka_auth_sync') : null;
+
+const authChannel =
+  typeof BroadcastChannel !== 'undefined'
+    ? new BroadcastChannel('pustaka_auth_sync')
+    : null;
 
 export const useSession = create((set, get) => {
+  // Sync login/logout antar tab
   if (authChannel) {
     authChannel.onmessage = (event) => {
       if (event.data?.type === 'LOGOUT') {
-        set({ status: 'guest', user: null, role: null, token: null });
-      } else if (event.data?.type === 'LOGIN') {
-        const raw = localStorage.getItem(USER_KEY);
+        set({
+          status: 'guest',
+          user: null,
+          role: null,
+          token: null,
+        });
+      }
+
+      if (event.data?.type === 'LOGIN') {
+        const rawUser = localStorage.getItem(USER_KEY);
         const token = localStorage.getItem(TOKEN_KEY);
-        if (raw) {
+
+        if (rawUser && token) {
           try {
-            const u = JSON.parse(raw);
-            set({ status: 'authenticated', user: u, role: u.role, token });
-          } catch (e) {}
+            const user = JSON.parse(rawUser);
+
+            set({
+              status: 'authenticated',
+              user,
+              role: user.role,
+              token,
+            });
+          } catch {
+            localStorage.removeItem(USER_KEY);
+            localStorage.removeItem(TOKEN_KEY);
+          }
         }
       }
     };
@@ -31,172 +54,206 @@ export const useSession = create((set, get) => {
     role: null,
     token: null,
 
-    initSession: () => {
-      try {
-        const saved = localStorage.getItem(USER_KEY);
-        const token = localStorage.getItem(TOKEN_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && parsed.role) {
-            const validToken = token || `token-${parsed.id}`;
-            localStorage.setItem(TOKEN_KEY, validToken);
-            set({ status: 'authenticated', user: parsed, role: parsed.role, token: validToken });
-            return;
-          }
-        }
-      } catch (e) {
-        console.error('Failed to init session:', e);
-      }
+    // ==========================================
+    // INIT SESSION
+    // ==========================================
 
-      // Default persistent user session so page refresh never boots the user
-      const defaultUser = {
-        id: 'usr-default',
-        name: 'Budi Pratama',
-        email: 'user@pustaka.id',
-        role: 'user',
-        isActive: true,
-        joinedDate: '2024-01-15',
-      };
-      const defaultToken = 'token-usr-default';
-      localStorage.setItem(USER_KEY, JSON.stringify(defaultUser));
-      localStorage.setItem(TOKEN_KEY, defaultToken);
-      set({ status: 'authenticated', user: defaultUser, role: 'user', token: defaultToken });
+    initSession: async () => {
+      try {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const rawUser = localStorage.getItem(USER_KEY);
+
+        // Tidak ada session
+        if (!token || !rawUser) {
+          set({
+            status: 'guest',
+            user: null,
+            role: null,
+            token: null,
+          });
+
+          return;
+        }
+
+        const localUser = JSON.parse(rawUser);
+
+        // Token harus JWT
+        if (!token.includes('.')) {
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
+
+          set({
+            status: 'guest',
+            user: null,
+            role: null,
+            token: null,
+          });
+
+          return;
+        }
+
+        // Verifikasi token ke backend
+        try {
+          const response = await api.auth.me();
+
+          const user =
+            response?.user ||
+            response?.data?.user ||
+            response?.data ||
+            response;
+
+          if (!user) {
+            throw new Error('User session tidak ditemukan');
+          }
+
+          localStorage.setItem(USER_KEY, JSON.stringify(user));
+
+          set({
+            status: 'authenticated',
+            user,
+            role: user.role,
+            token,
+          });
+
+          return;
+        } catch (error) {
+          console.warn('Session tidak valid:', error.message);
+
+          localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_KEY);
+
+          set({
+            status: 'guest',
+            user: null,
+            role: null,
+            token: null,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to initialize session:', error);
+
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+
+        set({
+          status: 'guest',
+          user: null,
+          role: null,
+          token: null,
+        });
+      }
     },
 
-    // Register khusus User/Member
+    // ==========================================
+    // REGISTER
+    // ==========================================
+
     register: async (name, email, password) => {
       const cleanEmail = email.trim().toLowerCase();
-      try {
-        const res = await api.auth.register(name, cleanEmail, password);
-        if (res && res.user && res.token) {
-          localStorage.setItem(TOKEN_KEY, res.token);
-          localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-          set({ status: 'authenticated', user: res.user, role: res.user.role || 'user', token: res.token });
-          if (authChannel) authChannel.postMessage({ type: 'LOGIN', user: res.user });
-          return res.user;
-        }
-      } catch (e) {}
 
-      // Fallback: daftarkan user lokal
-      const newUser = {
-        id: `usr-${Date.now()}`,
-        name: name?.trim() || cleanEmail.split('@')[0],
-        email: cleanEmail,
-        role: 'user',
-        isActive: true,
-        joinedDate: new Date().toISOString().slice(0, 10),
-      };
-      const userToken = `token-usr-${Date.now()}`;
+      const response = await api.auth.register(
+        name.trim(),
+        cleanEmail,
+        password
+      );
 
-      try {
-        const registered = JSON.parse(localStorage.getItem(USERS_REGISTRY_KEY) || '[]');
-        const existingIdx = registered.findIndex((u) => u.email.toLowerCase() === newUser.email);
-        if (existingIdx >= 0) {
-          registered[existingIdx] = { ...newUser, password };
-        } else {
-          registered.push({ ...newUser, password });
-        }
-        localStorage.setItem(USERS_REGISTRY_KEY, JSON.stringify(registered));
-      } catch (e) {}
+      if (!response?.token || !response?.user) {
+        throw new Error('Register berhasil tetapi token tidak diterima');
+      }
 
-      localStorage.setItem(TOKEN_KEY, userToken);
-      localStorage.setItem(USER_KEY, JSON.stringify(newUser));
-      set({ status: 'authenticated', user: newUser, role: 'user', token: userToken });
+      const user = response.user;
+      const token = response.token;
+
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+
+      set({
+        status: 'authenticated',
+        user,
+        role: user.role,
+        token,
+      });
 
       if (authChannel) {
-        authChannel.postMessage({ type: 'LOGIN', user: newUser });
+        authChannel.postMessage({
+          type: 'LOGIN',
+          user,
+        });
       }
 
-      return newUser;
+      return user;
     },
 
-    // Sign In: Dipanggil HANYA saat form login dikirim
+    // ==========================================
+    // LOGIN
+    // ==========================================
+
     login: async (email, password) => {
       const cleanEmail = email.trim().toLowerCase();
-      
-      // 1. Coba request ke backend resmi
-      try {
-        const res = await api.auth.login(cleanEmail, password);
-        if (res && res.token && res.user) {
-          localStorage.setItem(TOKEN_KEY, res.token);
-          localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-          set({ status: 'authenticated', user: res.user, role: res.user.role, token: res.token });
-          if (authChannel) authChannel.postMessage({ type: 'LOGIN', user: res.user });
-          return res.user;
-        }
-      } catch (err) {
-        // Backend returned error or rate limit, check predefined/registered accounts below
+
+      // SELALU gunakan backend.
+      // Jangan lagi membuat token palsu dari frontend.
+      const response = await api.auth.login(
+        cleanEmail,
+        password
+      );
+
+      if (!response?.token || !response?.user) {
+        throw new Error(
+          'Login berhasil tetapi server tidak mengirim token'
+        );
       }
 
-      // 2. Demo credentials fallback jika backend offline/rate-limited
-      if (cleanEmail === 'admin@pustaka.id' && (password === 'demo1234' || password.length >= 4)) {
-        const adminUser = {
-          id: 'u-admin',
-          name: 'Admin Pustaka',
-          email: 'admin@pustaka.id',
-          role: 'admin',
-          isActive: true,
-          joinedDate: '2024-01-01',
-        };
-        const token = `token-admin-${Date.now()}`;
-        localStorage.setItem(TOKEN_KEY, token);
-        localStorage.setItem(USER_KEY, JSON.stringify(adminUser));
-        set({ status: 'authenticated', user: adminUser, role: 'admin', token });
-        if (authChannel) authChannel.postMessage({ type: 'LOGIN', user: adminUser });
-        return adminUser;
+      const user = response.user;
+      const token = response.token;
+
+      // Simpan JWT asli dari backend
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+
+      set({
+        status: 'authenticated',
+        user,
+        role: user.role,
+        token,
+      });
+
+      if (authChannel) {
+        authChannel.postMessage({
+          type: 'LOGIN',
+          user,
+        });
       }
 
-      if (cleanEmail === 'staff@pustaka.id' && (password === 'demo1234' || password.length >= 4)) {
-        const staffUser = {
-          id: 'u-staff',
-          name: 'Staff Pustaka',
-          email: 'staff@pustaka.id',
-          role: 'staff',
-          isActive: true,
-          joinedDate: '2024-01-01',
-        };
-        const token = `token-staff-${Date.now()}`;
-        localStorage.setItem(TOKEN_KEY, token);
-        localStorage.setItem(USER_KEY, JSON.stringify(staffUser));
-        set({ status: 'authenticated', user: staffUser, role: 'staff', token });
-        if (authChannel) authChannel.postMessage({ type: 'LOGIN', user: staffUser });
-        return staffUser;
-      }
-
-      if (cleanEmail === 'user@pustaka.id' || cleanEmail.includes('@')) {
-        const registered = JSON.parse(localStorage.getItem(USERS_REGISTRY_KEY) || '[]');
-        const found = registered.find((u) => u.email.toLowerCase() === cleanEmail);
-
-        const userObj = {
-          id: found?.id || `usr-${Date.now()}`,
-          name: found?.name || cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-          email: cleanEmail,
-          role: 'user',
-          isActive: true,
-          joinedDate: found?.joinedDate || new Date().toISOString().slice(0, 10),
-        };
-        const token = `token-${userObj.id}`;
-        localStorage.setItem(TOKEN_KEY, token);
-        localStorage.setItem(USER_KEY, JSON.stringify(userObj));
-        set({ status: 'authenticated', user: userObj, role: 'user', token });
-        if (authChannel) authChannel.postMessage({ type: 'LOGIN', user: userObj });
-        return userObj;
-      }
-
-      throw new Error('Invalid email or password');
+      return user;
     },
+
+    // ==========================================
+    // LOGOUT
+    // ==========================================
 
     logout: async () => {
       try {
         await api.auth.logout();
-      } catch (e) {}
+      } catch (error) {
+        console.warn('Backend logout:', error.message);
+      }
+
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
-      set({ status: 'guest', user: null, role: null, token: null });
+
+      set({
+        status: 'guest',
+        user: null,
+        role: null,
+        token: null,
+      });
 
       if (authChannel) {
-        authChannel.postMessage({ type: 'LOGOUT' });
+        authChannel.postMessage({
+          type: 'LOGOUT',
+        });
       }
-    }
+    },
   };
 });
