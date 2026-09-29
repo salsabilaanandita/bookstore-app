@@ -102,7 +102,7 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop & Tablet Sidebar - 100% Borderless & Blends Seamlessly */}
-      <aside className="hidden md:flex flex-col shrink-0 md:w-20 xl:w-60 sticky top-0 h-screen p-5 justify-between select-none z-30 bg-transparent overflow-y-auto scrollbar-none">
+      <aside className="hidden md:flex flex-col shrink-0 w-60 sticky top-0 h-screen p-5 justify-between select-none z-30 bg-transparent overflow-y-auto scrollbar-none">
         <div className="flex flex-col gap-6">
           
           {/* User Welcome Card */}
@@ -112,11 +112,11 @@ export function Sidebar() {
                 <Avatar name={user.name} size="lg" className="ring-2 ring-white/90 shadow-sm" />
                 <span className="absolute bottom-0 right-0 h-3.5 w-3.5 bg-emerald-500 rounded-full ring-2 ring-[#EAE4D6]" />
               </div>
-              <span className="hidden xl:block text-[11px] text-text-secondary font-medium">Welcome Back</span>
-              <span className="hidden xl:block text-sm font-extrabold text-text-primary truncate max-w-[140px] mt-0.5">{user.name}</span>
+              <span className="hidden md:block text-[11px] text-text-secondary font-medium">Welcome Back</span>
+              <span className="hidden md:block text-sm font-extrabold text-text-primary truncate max-w-[140px] mt-0.5">{user.name}</span>
               
               {/* Member Tier & Streak */}
-              <div className="hidden xl:flex items-center gap-1.5 mt-2.5 px-2.5 py-0.5 rounded-full bg-white/60 dark:bg-black/20 text-[10px] font-bold text-accent shadow-xs">
+              <div className="hidden md:flex items-center gap-1.5 mt-2.5 px-2.5 py-0.5 rounded-full bg-white/60 dark:bg-black/20 text-[10px] font-bold text-accent shadow-xs">
                 <span>🔥 5d Streak</span>
                 <span>•</span>
                 <span>VIP Reader</span>
@@ -149,14 +149,14 @@ export function Sidebar() {
                         className={isActive ? 'text-accent' : 'text-text-secondary group-hover:text-text-primary transition-colors'}
                       />
                     </div>
-                    <span className="hidden xl:inline flex-1 truncate">{item.label}</span>
+                    <span className="hidden md:inline flex-1 truncate">{item.label}</span>
                     {item.badge != null && (
-                      <span className="hidden xl:inline-flex text-[10px] px-2 py-0.5 rounded-full font-bold bg-accent text-white shadow-xs">
+                      <span className="hidden md:inline-flex text-[10px] px-2 py-0.5 rounded-full font-bold bg-accent text-white shadow-xs">
                         {item.badge}
                       </span>
                     )}
                     {isActive && (
-                      <span className="hidden xl:block w-2 h-2 rounded-full bg-accent ml-auto shadow-xs" />
+                      <span className="hidden md:block w-2 h-2 rounded-full bg-accent ml-auto shadow-xs" />
                     )}
                   </>
                 )}
@@ -166,7 +166,7 @@ export function Sidebar() {
 
           {/* Mini Daily Reading Goal Widget inside Sidebar */}
           {role === 'user' && (
-            <div className="hidden xl:flex flex-col gap-2 p-3.5 rounded-2xl bg-surface-sand/80 border border-black/5">
+            <div className="hidden md:flex flex-col gap-2 p-3.5 rounded-2xl bg-surface-sand/80 border border-black/5">
               <div className="flex items-center justify-between text-[11px] font-bold text-text-primary">
                 <span className="flex items-center gap-1 text-accent">
                   <Icon name="Target" size={13} />
@@ -189,10 +189,10 @@ export function Sidebar() {
             title="Logout"
           >
             <Icon name="LogOut" size={17} />
-            <span className="hidden xl:inline">Logout</span>
+            <span className="hidden md:inline">Logout</span>
           </button>
 
-          <div className="hidden xl:flex flex-col pt-3 border-t border-black/5 text-[11px] text-text-tertiary">
+          <div className="hidden md:flex flex-col pt-3 border-t border-black/5 text-[11px] text-text-tertiary">
             <span>Product of</span>
             <span className="font-extrabold text-text-primary tracking-tight text-xs">
               pustaka<span className="text-accent text-sm">.</span>
@@ -266,4 +266,5 @@ export function Sidebar() {
     </>
   );
 }
+
 
